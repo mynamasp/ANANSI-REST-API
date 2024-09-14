@@ -1,0 +1,7 @@
+{
+    "last-updated" : <Unix Epoch>,
+    "humidity" : <value>,
+    "temperature" : <value>,
+    "pressure" : <value>,
+    "gascomposition": <value>
+}
