@@ -8,6 +8,8 @@ const fs = require('fs');
 const HTTP_PORT = 3000;
 const SERVER_SOCKET_PORT = 8080;
 
+var MovementQueue = [];
+
 //////////////////////////////////////////////////////////////////////////////////
 ////////////////////////// HTTP API Layer ////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
@@ -115,14 +117,13 @@ app.post('/command', (req, res) => {
 
     const direction = req.body.direction;
     let _ = `Moving: ${direction}`;
-    console.log(_);
+    // console.log(_);
     // res.send(_);
-
-    net.createConnection()
-
-
-
     //should send a message to STM32 -- figure it out
+
+    //add to the movement queue
+    MovementQueue.push(direction);
+    res.send('OK');
 });
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -138,11 +139,14 @@ app.post('/command', (req, res) => {
 
 */
 
+
+//request is initiated by the client (aka ST-Discovery-L475E-IOT01A)
 const server = net.createServer((socket) => {
     console.log('New client connected!'); //this is step - 1, we get a new client
-    console.log(socket.address())
-    socket.write('Welcome to the TCP server! - Respond with ACK - Ping');
-    console.log(socket.remoteAddress)
+    console.log('Client connected from IP:', socket.remoteAddress, 'Port:', socket.remotePort);
+
+    var session_data = readSessionCache('session-cache.json');
+    writeSessionCache('session-cache.json', { ...session_data,"ClientIP": socket.remoteAddress, "ClientPort": socket.remotePort });
 
     // Handle incoming messages from clients
     socket.on('data', (data) => {
@@ -154,26 +158,40 @@ const server = net.createServer((socket) => {
             //acknowledgement received
             console.log('ACK received');
             const unixTimeSessionStart = getCurrentEpochTime();
-            writeSessionCache('session-cache.json', { "StartTime": unixTimeSessionStart }); //at this point ack start ping pong is done
+            session_data = readSessionCache('session-cache.json');
+            writeSessionCache('session-cache.json', { ...session_data, "StartTime": unixTimeSessionStart }); //at this point ack start ping pong is done
+            socket.write('PONG');
+            console.log('PONG sent');
         }
 
         if(data.toString().startsWith('SENSOR-DATA')) 
         {
-            console.log('Got a new batch of sensor data');
+            // console.log('Got a new batch of sensor data');
+            console.log(data.toString().substring(12));
             const unixTimeReceiveSensorData = getCurrentEpochTime();
 
+            if(MovementQueue.length > 0){
+                const direction = MovementQueue.shift();
+                socket.write(`MOVEMENT-${direction}`);
+            }
+            else{
+                socket.write('NO-MOVEMENT');
+            }
+
+
             //SENSOR-DATA-<JSON-Object>
-            try{
-                const jsonData = JSON.parse(data.toString().substring(12));
-                writeSessionCache('session-cache.json', { "LastSensorDataReceived": unixTimeReceiveSensorData, ...jsonData });
-            }
-            catch(e){
-                console.log('Error parsing JSON data');
-                console.error(e);
-            }
+            // try{
+            //     const jsonData = JSON.parse(data.toString().substring(12));
+            //     writeSessionCache('session-cache.json', { "LastSensorDataReceived": unixTimeReceiveSensorData, ...jsonData });
+            // }
+            // catch(e){
+            //     console.log('Error parsing JSON data');
+            //     console.error(e);
+            // }
         }
         
-        console.log(`Received: ${data}`);
+        // console.log(`Received: ${data}`);
+        // socket.close();
     });
 
 

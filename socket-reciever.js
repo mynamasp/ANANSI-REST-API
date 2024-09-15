@@ -10,7 +10,9 @@ const serverStates = {
 const server = net.createServer((socket) => {
     var SERVER_STATE = serverStates.WAITING_FOR_COMMAND;
     
-    console.log('New client connected!');
+    console.log('Square like a rubix cube');
+    console.log(socket);
+    console.log(JSON.stringify(socket));
 
     // Send a welcome message to the client
     try {
