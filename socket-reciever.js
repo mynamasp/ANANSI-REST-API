@@ -1,5 +1,13 @@
+/*
+    
+Playing around with socket communication and ping pong to see what works 
+
+*/
+
+
 // server.js
 const net = require('net');
+
 
 const serverStates = {
     WAITING_FOR_COMMAND: 'WAITING_FOR_COMMAND',
