@@ -9,7 +9,7 @@ const HTTP_PORT = 3000;
 const SERVER_SOCKET_PORT = 8080;
 
 var MovementQueue = [];
-
+var sensorData;
 //////////////////////////////////////////////////////////////////////////////////
 ////////////////////////// HTTP API Layer ////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
@@ -69,6 +69,42 @@ const getCurrentEpochTime = () => {
     return Math.floor(Date.now() / 1000);
 }
 
+function formatSensorData(sensorData){
+    let pressureData = sensorData["pressure"];
+    let temperatureData = sensorData["temperature"];
+    let humidityData = sensorData["humidity"];
+    let batteryData = 40;
+    let gascomposition = sensorData["gascomposition"];
+    let dispatchTime = getCurrentEpochTime();
+    var sensor_data_frame = [
+        {
+            "type": "Temperature",
+            "value": temperatureData,
+            "unit-str": "°C",
+            "dispatched-at": dispatchTime
+        },
+        {
+            "type": "Pressure",
+            "value": pressureData,
+            "unit-str": "mBar",
+            "dispatched-at": dispatchTime
+        },
+        {
+            "type": "Humidity",
+            "value": humidityData,
+            "unit-str": "%",
+            "dispatched-at": dispatchTime
+        },
+        {
+            "type": "Battery",
+            "value": batteryData,
+            "unit-str": "%",
+            "dispatched-at": dispatchTime
+        }
+    ]
+    return sensor_data_frame;
+}
+
 function getDummyData(){
     const dummy_sensor_data_frame = [
         {
@@ -102,12 +138,8 @@ function getDummyData(){
 /*Sensor Data Handler*/
 
 app.get('/sensor-data', (req, res) => {
-    res.json(getDummyData());
-    }
-
-    //send JSON cache
-    //res.json(readJSONCache('sensor-data.json'));
-);
+    res.json(formatSensorData(sensorData));
+});
 
 /*Movement Data Handler*/
 
@@ -119,9 +151,7 @@ app.post('/command', (req, res) => {
     let _ = `Moving: ${direction}`;
     // console.log(_);
     // res.send(_);
-    //should send a message to STM32 -- figure it out
 
-    //add to the movement queue
     MovementQueue.push(direction);
     res.send('OK');
 });
@@ -166,12 +196,18 @@ const server = net.createServer((socket) => {
 
         if(data.toString().startsWith('SENSOR-DATA')) 
         {
-            // console.log('Got a new batch of sensor data');
-            console.log(data.toString().substring(12));
+            const jsonString = data.toString().substring(data.indexOf('{'));
             const unixTimeReceiveSensorData = getCurrentEpochTime();
+            var jsonData = JSON.parse(jsonString);
+
+            jsonData["gascomposition"] = null;
+            sensorData = jsonData;
+
+            writeSessionCache('sensor-data-cache.json', { "LastSensorDataReceived": unixTimeReceiveSensorData, ...jsonData });
 
             if(MovementQueue.length > 0){
                 const direction = MovementQueue.shift();
+                console.log(`Sending :: MOVEMENT-${direction}`)
                 socket.write(`MOVEMENT-${direction}`);
             }
             else{
@@ -190,9 +226,8 @@ const server = net.createServer((socket) => {
             // }
         }
         
-        // console.log(`Received: ${data}`);
-        // socket.close();
-    });
+
+    })
 
 
 });
