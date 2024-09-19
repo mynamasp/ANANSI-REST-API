@@ -1,7 +1,1 @@
-{
-    "last-updated" : <Unix Epoch>,
-    "humidity" : <value>,
-    "temperature" : <value>,
-    "pressure" : <value>,
-    "gascomposition": <value>
-}
+{"LastSensorDataReceived":1726501974,"pressure":1007.77,"temperature":32.6,"humidity":44.2,"gascomposition":null}
