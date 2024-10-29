@@ -4,12 +4,15 @@
   "description": "A dummy server to help figure out the best dataframe for sensor values in stm32 ",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js --env-file=.env",
+    "dev": "nodemon index.js --env-file=.env"
   },
   "author": "shan10",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "ws": "^8.18.0"
   }
