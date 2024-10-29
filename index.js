@@ -4,12 +4,24 @@ const bodyParser = require('body-parser');
 const app = express();
 const net = require('net');
 const fs = require('fs');
-
 const HTTP_PORT = 3000;
 const SERVER_SOCKET_PORT = 8080;
 
+const isDev = true;
+
+require('dotenv').config()
+const THINGSPEAK_API_KEY = process.env.THINGSPEAK_APIKEY;
+
+if(!!!THINGSPEAK_API_KEY){
+    console.error('THINGSPEAK_APIKEY not found in .env file');
+    console.log("Create a .env file with a variable called `THINGSPEAK_APIKEY` and assign it the value of your ThinkSpeak Write API Key");
+    process.exit(1);
+}
+
 var MovementQueue = [];
-var sensorData;
+var cachedData;
+
+
 //////////////////////////////////////////////////////////////////////////////////
 ////////////////////////// HTTP API Layer ////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +81,28 @@ const getCurrentEpochTime = () => {
     return Math.floor(Date.now() / 1000);
 }
 
-function formatSensorData(sensorData){
+function getFormattedTimeInThingSpeakFormat(today=null)
+{
+    // "2018-04-23 21:36:20 +0200"
+    if(!today){
+        today = new Date();
+    }
+    
+    //should be done better but this works for now
+    const offset = "-0300";
+
+    let year = today.getFullYear() % 100;
+    let month = today.getMonth().toString().padStart(2, '0');
+    let day = today.getDate().toString().padStart(2, '0');
+
+    let hours = today.getHours().toString().padStart(2, '0');
+    let minutes = today.getMinutes().toString().padStart(2, '0');
+    let seconds = today.getSeconds().toString().padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${offset}`;
+}
+
+function formatSensorDataForElectron(sensorData){
     let pressureData = sensorData["pressure"];
     let temperatureData = sensorData["temperature"];
     let humidityData = sensorData["humidity"];
@@ -135,10 +168,56 @@ function getDummyData(){
     return dummy_sensor_data_frame;    
 }
 
+async function WriteToThingSpeak(data){
+    /*
+        In Order
+            - Pressure
+            - Temperature 
+            - Humidity
+            - Battery
+
+        Slightly mixed up with respect to order in data
+    */
+
+
+    let timeStr = null;
+    console.log("Sending data to thingspeak");
+
+    if(isDev) 
+        timeStr = getFormattedTimeInThingSpeakFormat();
+    else 
+        timeStr = getFormattedTimeInThingSpeakFormat(data[0]["dispatched-at"]);    
+
+    let toSend = { 
+        "api_key": THINGSPEAK_API_KEY,  
+        "created_at": timeStr, 
+        "field1": data[1].value, 
+        "field2": data[0].value,
+        "field3": data[2].value,
+        "field4": data[3].value,
+        "latitude": "", 
+        "longitude": "", 
+        "status": "Log From ST-Discovery-L475E-IOT01A" 
+    }
+                 
+    const url = "https://api.thingspeak.com/update.json"
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(toSend)
+    })
+
+    const json = await res.json();
+    console.log(json);
+}
+
 /*Sensor Data Handler*/
 
 app.get('/sensor-data', (req, res) => {
-    res.json(formatSensorData(sensorData));
+    res.json(formatSensorDataForElectron(cachedData));
 });
 
 /*Movement Data Handler*/
@@ -155,6 +234,18 @@ app.post('/command', (req, res) => {
     MovementQueue.push(direction);
     res.send('OK');
 });
+
+//test endpoint to write to thingspeak
+app.get('/test-dummy-data', (req, res) => {
+    let dummy_sensor_data = getDummyData();
+    WriteToThingSpeak(dummy_sensor_data).then(() => {
+        console.log("Logged sensor data to thingspeak");
+        res.send('OK');
+    }).catch((err) => {
+        console.error(err);
+        res.send('Error');
+    });
+})
 
 //////////////////////////////////////////////////////////////////////////////////
 ////////////////////////// Socket Layer //////////////////////////////////////////
@@ -201,7 +292,7 @@ const server = net.createServer((socket) => {
             var jsonData = JSON.parse(jsonString);
 
             jsonData["gascomposition"] = null;
-            sensorData = jsonData;
+            cachedData = jsonData;
 
             writeSessionCache('sensor-data-cache.json', { "LastSensorDataReceived": unixTimeReceiveSensorData, ...jsonData });
 
@@ -213,17 +304,6 @@ const server = net.createServer((socket) => {
             else{
                 socket.write('NO-MOVEMENT');
             }
-
-
-            //SENSOR-DATA-<JSON-Object>
-            // try{
-            //     const jsonData = JSON.parse(data.toString().substring(12));
-            //     writeSessionCache('session-cache.json', { "LastSensorDataReceived": unixTimeReceiveSensorData, ...jsonData });
-            // }
-            // catch(e){
-            //     console.log('Error parsing JSON data');
-            //     console.error(e);
-            // }
         }
         
 
@@ -231,6 +311,35 @@ const server = net.createServer((socket) => {
 
 
 });
+
+//////////////////////////////////////////////////////////////////////////////////
+////////////////////////// ThinkSpeak Layer //////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
+
+const interval = 15*60000; // 15 minutes
+
+setInterval(() => {
+    let dataToSend = null;
+
+    if(isDev) 
+        dataToSend = getDummyData();
+    else 
+        {
+            const cachedData = readSessionCache('sensor-data-cache.json');
+            const sensor_data_frame = formatSensorDataForElectron(cachedData);
+            dataToSend = sensor_data_frame;
+        }
+        
+    WriteToThingSpeak(dataToSend).then(() => {
+        console.log("Logged sensor data to thingspeak");
+        console.log(dataToSend);
+        console.log("====================================");
+    }).catch((err) => {
+        console.error(err);
+    });
+    
+},  interval);
+
 
 //////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////// Listeners //////////////////////////////////////////
