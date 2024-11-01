@@ -102,13 +102,30 @@ function getFormattedTimeInThingSpeakFormat(today=null)
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${offset}`;
 }
 
-function formatSensorDataForElectron(sensorData){
+function formatSensorDataForElectron(sensorData, isCached=false){
+
+
     let pressureData = sensorData["pressure"];
     let temperatureData = sensorData["temperature"];
     let humidityData = sensorData["humidity"];
     let batteryData = 40;
     let gascomposition = sensorData["gascomposition"];
-    let dispatchTime = getCurrentEpochTime();
+    let dispatchTime = null;
+
+    if(isCached)
+        dispatchTime = sensorData["LastSensorDataReceived"];
+    else
+        dispatchTime = getCurrentEpochTime();
+
+    console.assert (
+        pressureData != null && 
+        temperatureData != null && 
+        humidityData != null && 
+        batteryData != null, 
+        "Sensor Data is null",
+        sensorData
+    );
+
     var sensor_data_frame = [
         {
             "type": "Temperature",
