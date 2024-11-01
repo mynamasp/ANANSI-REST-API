@@ -81,6 +81,7 @@ const getCurrentEpochTime = () => {
     return Math.floor(Date.now() / 1000);
 }
 
+// today is a dateTime object initialized with the current time
 function getFormattedTimeInThingSpeakFormat(today=null)
 {
     // "2018-04-23 21:36:20 +0200"
@@ -103,8 +104,6 @@ function getFormattedTimeInThingSpeakFormat(today=null)
 }
 
 function formatSensorDataForElectron(sensorData, isCached=false){
-
-
     let pressureData = sensorData["pressure"];
     let temperatureData = sensorData["temperature"];
     let humidityData = sensorData["humidity"];
@@ -112,8 +111,10 @@ function formatSensorDataForElectron(sensorData, isCached=false){
     let gascomposition = sensorData["gascomposition"];
     let dispatchTime = null;
 
-    if(isCached)
+    if(isCached){
         dispatchTime = sensorData["LastSensorDataReceived"];
+        console.log("Taking data from cache")
+    }
     else
         dispatchTime = getCurrentEpochTime();
 
@@ -173,13 +174,13 @@ function getDummyData(){
             "type": "Humidity",
             "value": GenerateRandomInt(0, 100),
             "unit-str": "%",
-            "dispatched-at": getCurrentEpochTime
+            "dispatched-at": getCurrentEpochTime()
         },
         {
             "type": "Battery",
             "value": GenerateRandomInt(0, 100),
             "unit-str": "%",
-            "dispatched-at": 1623987600
+            "dispatched-at": getCurrentEpochTime()
         }
     ]
     return dummy_sensor_data_frame;    
@@ -202,8 +203,11 @@ async function WriteToThingSpeak(data){
 
     if(isDev) 
         timeStr = getFormattedTimeInThingSpeakFormat();
-    else 
-        timeStr = getFormattedTimeInThingSpeakFormat(data[0]["dispatched-at"]);    
+    else {
+        let _newDate = new Date(data[0]["dispatched-at"]*1000);
+        timeStr = getFormattedTimeInThingSpeakFormat(_newDate);    
+    }
+        
 
     let toSend = { 
         "api_key": THINGSPEAK_API_KEY,  
@@ -343,7 +347,7 @@ setInterval(() => {
     else 
         {
             const cachedData = readSessionCache('sensor-data-cache.json');
-            const sensor_data_frame = formatSensorDataForElectron(cachedData);
+            const sensor_data_frame = formatSensorDataForElectron(cachedData, true);
             dataToSend = sensor_data_frame;
         }
         
@@ -352,6 +356,7 @@ setInterval(() => {
         console.log(dataToSend);
         console.log("====================================");
     }).catch((err) => {
+        console.log("Error while logging sensor data to thingspeak");
         console.error(err);
     });
     
